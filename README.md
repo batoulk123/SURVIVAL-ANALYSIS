@@ -10,4 +10,7 @@ It includes data preprocessing, modelbuilding, and evaluation, providing insight
 4- Building a decision tree classified according to the number of nodes(exposed to node4 if nb of nodes>12),
    having a result of 98% as a percentage probability as if exposed leads to node4 case.
 5- Calculating the risk measures even with making colon surgery, getting 96% risk ratio and 86% odds ratio which means that sample people       who made the surgery had 96% of the risk of reaching node4 level for colon compared to the non_surgeried people sample.
+  
    **Suggesting that the surgery is providing some protection, but the effect is small.**
+
+   **Project Link**   http://rpubs.com/batoulk/1320236
