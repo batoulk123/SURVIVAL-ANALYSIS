@@ -1,0 +1,235 @@
+---
+title: "Survival Analysis"
+author: "Batoul Kalot"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(warning = FALSE, message = FALSE)
+library(survival)
+library(survminer)
+library(dplyr)
+library(readxl)
+library(tidyverse)
+library(tidymodels)
+library(gt)
+library(lsr)
+library(survival)
+library(rpart)
+library(rpart.plot)
+library(epiR)
+
+```
+
+## Loading data
+```{r echo=FALSE}
+colon <- read_excel("C:/Users/Lenovo/Downloads/colon.xlsx")
+head(colon) %>% gt() %>% 
+  opt_stylize(style=2,color="blue")
+```
+
+## Exploratory Analysis
+```{r}
+colon %>% 
+  ggplot(aes(x=age))+
+  geom_histogram(color="red")
+
+```
+
+**There exists some outliers under age 30**
+
+## Filtering and preparing data
+```{r}
+data <- colon %>% 
+  filter(age>30)
+data <- data %>% 
+         mutate(Time=as.Date(time))
+```
+
+## EDA
+```{r}
+data %>% ggplot(aes(x=status))+
+                geom_bar(fill="green")
+```
+
+**Same count for colon status** 
+
+```{r}
+data %>% ggplot(aes(x=surg))+
+  geom_bar(fill="yellow")
+
+```
+
+**Count of cases which are exposed to colon surgeries are much less than not**
+
+## Checking relations and associations
+```{r}
+attach(data)
+tab <- table(status, surg)
+chi <- chisq.test(tab)
+```
+
+
+```{r}
+print(chi)
+```
+
+
+```{r}
+cramersV(tab)
+```
+**High effect size between surg and status of colon**
+
+```{r}
+attach(data)
+tab2 <- table(status, sex)
+chi <- chisq.test(tab2, correct=T)
+```
+
+
+```{r}
+print(chi)
+```
+**Not significant p_value , so there is no relation between sex and status.**
+
+```{r}
+attach(data)
+tab3 <- table(status,obstruct)
+chi <- chisq.test(tab3, correct=T)
+```
+
+```{r}
+print(chi)
+```
+**Not significant p_value.**
+
+```{r}
+attach(data)
+tab4 <- table(status,adhere)
+chi <- chisq.test(tab4, correct=T)
+```
+
+```{r}
+print(chi)
+```
+
+```{r}
+library(lsr)
+cramersV(tab4)
+```
+**High effect size between adhesions and status of the colon**
+
+
+## Time series analysis
+```{r}
+data %>%
+  mutate(sex=as.factor(sex)) %>% 
+  ggplot(aes(x=Time,
+             y=nodes,
+             color=sex))+
+  geom_line()
+```
+
+# Survival Analysis
+## Manipulating data 
+```{r}
+data <- data %>% 
+  mutate(exposed = (nodes>12),
+         status=as.factor(status),
+         adhere=as.factor(adhere),
+         surg=as.factor(surg),
+         node4=as.factor(node4),
+         Time=as.integer(Time)) %>% 
+  select(Time, status, nodes, 
+         adhere, surg, node4, exposed)
+```
+
+```{r}
+head(data) %>% gt()
+```
+
+# Survival Analysis
+## Creating our survival function
+```{r}
+colonsurv <- survfit(Surv(Time, node4) ~ exposed + status, data)
+```
+
+
+```{r}
+plot(colonsurv, xlab="Time", ylab="Survival Probability",
+     main="Kaplan-Meier Curve")
+```
+
+```{r}
+cox.mode <- coxph(Surv(time,node4) ~ status)
+```
+
+```{r}
+summary(cox.mode)
+```
+**So based on th hazard ratio in our cox model, The group with positive status of colon exposed to node4 has a risk of the cancer that is 20.4 times than the group with status 0. **
+
+
+# Logistic Regression
+```{r}
+set.seed(2)
+ split <- initial_split(data,
+                        prop=.80,
+                        strata=node4)  
+ data_train <- training(split) 
+ data_test <- testing(split)
+```
+
+# Building the model
+```{r}
+model <- glm(node4 ~ status,
+              data=data_train,
+              family="binomial")
+```
+
+
+```{r}
+summary(model)
+```
+
+## Testing the accuracy
+```{r}
+data_test <- data_test %>% 
+   mutate(node4_prob = predict(model,
+                                data_test,
+                                type= "response"),
+          node4_pred = ifelse(node4_prob > .5, 1, 0))
+t <- table(data_test$node4,
+            data_test$node4_pred)
+```
+
+
+```{r}
+accuracy <- sum(diag(t))/sum(t)     
+
+```
+
+```{r}
+print(accuracy)
+```
+**73% accuracy of the classification model built based on status of the colon**
+
+### Decision tree based on exposed cases(have nodes>12)
+```{r}
+tree_model <- rpart(node4 ~ exposed,data=data_train,
+                    method = "class")
+rpart.plot(tree_model, main = "Decision Tree for colon Classification")
+```
+
+# Incidence: Risk and Odds Ratios according to the surgery
+```{r}
+TAB <- table(surg, node4)
+epi.2by2(TAB, method="cohort.count",
+         conf.level=0.95)
+```
+**96% risk ratio and 86% odds ratio, means that sample people who made the surgery had 96% of the risk of reaching node4 level for colon compared to the non_surgeried people sample.**
+
+**This would suggest that the surgery is providing some protection,** 
+**but the effect is small.**
+
+
